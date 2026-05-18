@@ -1,7 +1,7 @@
 import pygame
 import sys
-# import model
-import model_ref
+import model
+# import model_ref as model
 import view
 from view import TEXT, BUTTON, WIDTH, HEIGHT, BLACK, WHITE, VIOLET, TEXTES
 
