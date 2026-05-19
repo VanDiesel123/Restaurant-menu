@@ -655,6 +655,8 @@ class RestaurantController:
                 pygame.draw.rect(self.screen, VIOLET, (50, 368, 650, 360), 2)
                 
                 if self.order_search_query.strip():
+                    font_item = pygame.font.Font("Pacifico-Regular.ttf", 24) # розмір 24 можеш змінити на свій смак
+
                     surf_sq = font_item.render(f"Фільтр чеків: {self.order_search_query} |", True, (255, 215, 0))
                     self.screen.blit(surf_sq, (65, 335))
 
