@@ -1,10 +1,13 @@
 import copy
+import asyncio
+from prisma import Prisma
 
 class RestaurantModel:
     def __init__(self):
         """
         ІНІЦІАЛІЗАЦІЯ ОБ'ЄКТА МОДЕЛІ.
         """
+        self.db = Prisma()
         # Тимчасові змінні стану для збереження зв'язку з контролером
         self.current_table_num = 7       # Поточний обраний стіл у CREATE та EDIT (int)
         self.selected_category = "Страви" # Поточна категорія меню (str)
@@ -23,7 +26,6 @@ class RestaurantModel:
         self.menu_data = {
             "Страви": {},
             "Напої": {},
-            "Пиво": {}
         }
 
         # 3. Таблиця DishConfigurations: Зберігає тривалість приготування страв { dish_name (str): minutes (int) }
@@ -41,10 +43,35 @@ class RestaurantModel:
         # 7. Таблиця IngredientsPool: Загальний глобальний перелік усіх можливих складників (list of str)
         self.global_ingredients_pool = []
 
-        # ПРИМІТКА:
-        # Логіку початкового автокалібрування цін при старті (пропорційне вирівнювання собівартості 
-        # інгредієнтів під базову ціну меню ресторану) рекомендовано перенести на рівень 
-        # SQL-скрипту ініціалізації бази даних або зберегти у вигляді окремої міграції.
+    async def connect_db(self):
+        """Підключається до бази даних PostgreSQL"""
+        await self.db.connect()
+        print("Модель успішно підключена до PostgreSQL!")
+        
+        all_dishes = await self.db.dish.find_many()
+        
+        # Очищаємо обидві категорії перед завантаженням
+        self.menu_data["Страви"] = {}
+        self.menu_data["Напої"] = {}
+        
+        # Створюємо "шпаргалку" для програми: які назви вважати напоями
+        drinks_list = ["Кава", "Чай", "Кола", "Лимонад", "Сік", "Еспресо", "Капучино"]
+        
+        # Перебираємо всі записи з бази
+        for dish in all_dishes:
+            # Якщо назва є в нашому списку напоїв — кладемо у "Напої"
+            if dish.Dish_name in drinks_list:
+                self.menu_data["Напої"][dish.Dish_name] = float(dish.Price)
+            # Усе інше вважаємо "Стравами"
+            else:
+                self.menu_data["Страви"][dish.Dish_name] = float(dish.Price)
+            
+        print("Меню успішно завантажено та розсортовано!")
+
+    async def disconnect_db(self):
+        """Відключається від бази даних"""
+        if self.db.is_connected():
+            await self.db.disconnect()
 
     # =========================================================================
     # Р О З Д І Л  1 та 2:  У П Р А В Л І Н Н Я  М Е Н Ю  Т А  Р Е Ц Е П Т У Р О Ю
@@ -226,26 +253,33 @@ class RestaurantModel:
         if self.current_table_num < 1: self.current_table_num = 1
         if self.current_table_num > 20: self.current_table_num = 20
 
-    def select_dish(self, dish_name):
-        """
-        Вибір страви користувачем у CREATE для розгортки її рецепту та описів (Пункт 2.4 ТЗ).
-        Наповнює локальний динамічний масив self.current_dish_ingredients для UI-контролера.
-        
-        Аргументи:
-            dish_name (str): Назва вибраної страви.
-        Повертає:
-            None (Наповнює масив self.current_dish_ingredients об'єктами типу dict)
-            
-        БЕКЕНД-ЗАДАЧА: Виконати SELECT запит до таблиці рецептур Recipes для dish_name.
-        Для кожного активного компонента (де маркер не дорівнює '!') розпарсити рядок метаданих 
-        на чисте число грамів і символ-маркер, сформувавши структуру даних для контролера.
-        """
+    async def select_dish(self, dish_name):
         self.selected_dish = dish_name
         self.current_dish_ingredients = []
-        # Шаблон логіки виклику з БД:
-        # recipe = SELECT ingredients FROM Recipes WHERE dish = dish_name
-        # For ing, meta in recipe: розпакувати і додати в self.current_dish_ingredients
-        pass
+
+        # логіка пошуку страви в базі даних, схожа на попередні
+
+        dish = await self.db.dish.find_unique(
+            where = {"Dish_name" : dish_name}
+        )
+        if not dish:
+            return
+        
+        links = await self.db.dishingredient.find_many(
+            where = {"DishId" : dish.Dish_id}
+        )
+        
+        for link in links:
+            ingredient = await self.db.ingredient.find_unique(
+                where = {"Ingredient_id" : link.IngredientId}
+            )
+        
+            if ingredient:
+                self.current_dish_ingredients.append({
+                    "name" : ingredient.Ing_name,
+                    "count" : 50,
+                    "symbol" : "*"
+                })
 
     def load_dish_from_snapshot(self, snapshot):
         """
@@ -265,19 +299,13 @@ class RestaurantModel:
         pass
 
     def get_current_dish_price(self):
-        """
-        Динамічний розрахунок фактичної вартості поточної страви в реальному часі (Пункт 3.3.2 ТЗ).
-        Підсумовує вагу кожного компонента на його ціну за одиницю з урахуванням кастомізації клієнта.
-        
-        Аргументи:
-            None (Працює із масивом оперативної пам'яті self.current_dish_ingredients)
-        Повертає:
-            float: Поточна калькуляційна ціна страви для виведення на екран замовлень.
+        # Якщо страву не вибрано - ціна 0
+        if not self.selected_dish: 
+            return 0.0
             
-        БЕКЕНД-ЗАДАЧА: Надіслати SELECT запит до таблиці цін IngredientPrices для поточної страви.
-        Помножити поточну вагу кожного продукту з `self.current_dish_ingredients` на його ціну з БД і повернути суму.
-        """
-        return 0.0
+        # Беру базову ціну з нашого словника, який ми завантажили при старті
+        base_price = self.menu_data.get(self.selected_category, {}).get(self.selected_dish, 0.0)
+        return float(base_price)
 
     def save_current_dish_snapshot(self, index=None):
         """
@@ -324,18 +352,20 @@ class RestaurantModel:
         return sum(snapshot["FACT_PRICE"] for snapshot in self.basket_dishes)
 
     def load_order_for_editing(self, order_id):
-        """
-        Завантаження раніше оформленого архівного замовлення з бази даних назад у кошик для його зміни (Пункт 3.3 ТЗ).
-        
-        Аргументи:
-            order_id (int): Унікальний номер чека (Primary Key).
-        Повертає:
-            bool: True якщо замовлення успішно знайдено та завантажено в кошик, False — якщо ні.
+        """Завантажує архівне замовлення назад у робочий кошик"""
+        if order_id in self.my_orders_database:
+            order_data = self.my_orders_database[order_id]
             
-        БЕКЕНД-ЗАДАЧА: Виконати SELECT запит до таблиці архівних чеків за order_id.
-        Завантажити збережений номер столика в `self.current_table_num`, а список страв чека 
-        за допомогою `copy.deepcopy()` розгорнути в оперативний робочий кошик `self.basket_dishes`.
-        """
+            # 1. Відновлюємо номер столика
+            self.current_table_num = order_data["table"]
+            
+            # 2. Перекидаємо страви з чека у тимчасовий кошик контролера
+            import copy
+            self.basket_dishes = copy.deepcopy(order_data["dishes"])
+            
+            print(f"Замовлення №{order_id} відкрито для редагування!")
+            return True
+            
         return False
 
     def save_edited_order(self, order_id):
@@ -352,37 +382,63 @@ class RestaurantModel:
         """
         return False
 
-    def confirm_and_close_order(self):
-        """
-        Фінальне підтвердження, проведення та збереження абсолютно нового замовлення в базу даних (Пункт 3.1 ТЗ).
-        
-        Аргументи:
-            None
-        Повертає:
-            None (Очищує тимчасовий кошик та скидає лічильник столу на дефолт)
+    async def confirm_and_close_order(self):
+
+        # 1. Перевіряємо, чи не порожній кошик. Якщо порожній - нічого зберігати.
+        if not self.basket_dishes:
+            return False
+
+        # 2. Рахуємо загальну суму чека (викликаємо нашу синхронну функцію)
+        total_price = self.get_total_order_price()
+
+        # 3. Створюємо новий запис у таблиці Order (Замовлення)
+        # Prisma автоматично генерує унікальний ID для цього чека
+        new_order = await self.db.order.create(
+            data={
+                "Table_name": self.current_table_num,
+                "Total_price": float(total_price),
+                "Order_type": "IN_RESTAURANT"
+            }
+        )
+
+        # 4. Перебираємо всі страви з кошика і прив'язуємо їх до цього чека
+        for item in self.basket_dishes:
+            dish_name = item["DISH_NAME"]
             
-        БЕКЕНД-ЗАДАЧА: Генерація нового чека. Виконати INSERT запит у таблицю замовлень. 
-        Записати згенерований `next_order_id` (Primary Key), номер столика `self.current_table_num` 
-        та весь масив страв із кошика `self.basket_dishes`. Збільшити лічильник `next_order_id` на 1.
-        """
-        # Логіка-орієнтир для БД:
-        # INSERT INTO Orders (id, table_num, content) VALUES (self.next_order_id, self.current_table_num, self.basket_dishes)
-        # self.next_order_id += 1
+            # Знаходимо ID страви за назвою
+            dish = await self.db.dish.find_unique(
+                where={"Dish_name": dish_name}
+            )
+            
+            if dish:
+                # Записуємо позицію в таблицю OrderItem (зв'язок чека і страви)
+                await self.db.orderitem.create(
+                    data = {
+                        "OrderId": new_order.Order_id,
+                        "DishId": dish.Dish_id,
+                        "Quantity": 1
+                    }
+                )
+
+        # 5. Очищаємо кошик і скидаємо столик для наступного клієнта
         self.basket_dishes = []
         self.current_table_num = 7
+        
+        print(f"Замовлення №{new_order.Order_id} успішно збережено в базу!")
+        return True
 
     def delete_order_by_id(self, order_id):
-        """
-        Повне анулювання та видалення оформленого чека/замовлення з архіву ресторану (Пункт 3.2 ТЗ).
+        """Синхронний міст для Pygame для видалення чека"""
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._async_delete_order(order_id))
+
+    async def _async_delete_order(self, order_id):
+        """Асинхронно видаляє чек та всі його страви з бази"""
+
+        await self.db.orderitem.delete_many(where={"OrderId": order_id})
         
-        Аргументи:
-            order_id (int): Унікальний номер чека для видалення.
-        Повертає:
-            None
-            
-        БЕКЕНД-ЗАДАЧА: Виконати DELETE запит рядка чека з таблиці замовлень за умовою WHERE id = order_id.
-        """
-        pass
+        await self.db.order.delete(where={"Order_id": order_id})
+        print(f"Замовлення №{order_id} назавжди видалено з бази!")
 
     def get_order_keys(self):
         """
@@ -426,32 +482,57 @@ class RestaurantModel:
         pass
 
     def change_ingredient_count(self, idx, amount):
-        """
-        Зміна кількості (ваги) інгредієнта у робочій області CREATE при кастомізації страви клієнтом (Пункт 3.3.1 ТЗ).
-        Керує лімітами ваги залежно від символу-маркера (обов'язковий, незамінний, екстра).
-        
-        Аргументи:
-            idx (int): Порядковий індекс інгредієнта в поточному динамічному списку інтерфейсу.
-            amount (int): Напрямок зміни ваги (наприклад: +1 або -1 порція).
-        Повертає:
-            None
-        """
-        pass
-
-    def get_filtered_order_keys(self, query):
-        """
-        Пошук та динамічна фільтрація архівних чеків за ключовим словом (Пункт 4.2 ТЗ).
-        Здійснює вибірку замовлень за номером столика або текстовим входженням назви страви.
-        
-        Аргументи:
-            query (str): Рядок пошукового запиту, введений адміністратором з клавіатури.
-        Повертає:
-            list of int: Впорядкований список ID тільки тих чеків, які задовольняють умову фільтрації.
+        # Перевіряю, чи існує такий інгредієнт
+        if 0 <= idx < len(self.current_dish_ingredients):
+            # Змінюю його кількість
+            self.current_dish_ingredients[idx]['count'] += amount
             
-        БЕКЕНД-ЗАДАЧА: Реалізувати гнучкий пошуковий SQL-запит.
-        SELECT DISTINCT id FROM Orders 
-        WHERE table_num = query 
-        OR content_dishes_names LIKE '%' || query || '%' 
-        ORDER BY id ASC;
-        """
-        return []
+            # Вага не може бути меншою за нуль
+            if self.current_dish_ingredients[idx]['count'] < 0:
+                self.current_dish_ingredients[idx]['count'] = 0
+    def get_filtered_order_keys(self, query):
+        """Синхронний міст для Pygame, щоб дочекатися базу даних"""
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(self._fetch_orders_from_db(query))
+
+    async def _fetch_orders_from_db(self, query):
+        """Асинхронно витягує всі чеки з PostgreSQL та готує їх для візуалу"""
+        self.my_orders_database = {}
+    
+        all_orders = await self.db.order.find_many()
+        
+        valid_keys = []
+        
+        for order in all_orders:
+            order_id = order.Order_id
+            table_num = order.Table_name if order.Table_name else 0
+            
+            # Шукаємо страви, які належать саме цьому чеку
+            items = await self.db.orderitem.find_many(where={"OrderId": order_id})
+            
+            dishes_list = []
+            for item in items:
+                # Знаходимо інформацію про страву за її ID
+                dish = await self.db.dish.find_unique(where={"Dish_id": item.DishId})
+                if dish:
+                    # Пакуємо так, як цього очікує візуал
+                    dishes_list.append({
+                        "DISH_NAME": dish.Dish_name,
+                        "FACT_PRICE": float(dish.Price) * item.Quantity
+                    })
+            
+            self.my_orders_database[order_id] = {
+                "table": table_num,
+                "dishes": dishes_list
+            }
+            
+            if not query:
+                valid_keys.append(order_id)
+            else:
+                if str(table_num) == query:
+                    valid_keys.append(order_id)
+                elif any(query.lower() in d["DISH_NAME"].lower() for d in dishes_list):
+                    valid_keys.append(order_id)
+                    
+        valid_keys.sort()
+        return valid_keys

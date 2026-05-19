@@ -4,6 +4,7 @@ import model
 # import model_ref as model
 import view
 from view import TEXT, BUTTON, WIDTH, HEIGHT, BLACK, WHITE, VIOLET, TEXTES
+import asyncio
 
 class RestaurantController:
     def __init__(self):
@@ -12,6 +13,9 @@ class RestaurantController:
         pygame.display.set_caption("Формування замовлень у ресторані")
         
         self.model = model.RestaurantModel()
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.model.connect_db())
         self.clock = pygame.time.Clock()
         self.FPS = 60
         
@@ -148,11 +152,14 @@ class RestaurantController:
 
     def submit_entire_order(self):
         if self.edit_mode:
-            self.model.save_edited_order(self.editing_order_id)
+            # Функцію редагування ми ще не писали, тому поки залишимо заглушку
+            # self.model.save_edited_order(self.editing_order_id)
             self.edit_mode = False
             self.editing_order_id = None
         elif self.model.basket_dishes:
-            self.model.confirm_and_close_order()
+            # МАГІЯ ТУТ: Змушуємо синхронний Pygame дочекатися асинхронної бази
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self.model.confirm_and_close_order())
             
         self.editing_dish_index = None
         self.change_tab("MANAGEMENT")
@@ -239,12 +246,14 @@ class RestaurantController:
                 self.menu_items_buttons.append(btn)
 
     def select_dish(self, dish_name):
-        self.model.select_dish(dish_name)
-        self.desc_scroll_idx = 0
-        self.ing_scroll_idx = 0
-        self.adding_ingredient_mode = False
-        self.editing_dish_index = None
-        self.update_center_ingredients_cache()
+     loop = asyncio.get_event_loop()
+     loop.run_until_complete(self.model.select_dish(dish_name))
+
+     self.desc_scroll_idx = 0
+     self.ing_scroll_idx = 0
+     self.adding_ingredient_mode = False
+     self.editing_dish_index = None
+     self.update_center_ingredients_cache()
 
     def select_dish_for_editing(self, index):
         snapshot = self.model.basket_dishes[index]

@@ -1,0 +1,62 @@
+// Прописую що Призма використовується для пайтона
+generator client{
+    provider = "prisma-client-py"
+    enable_experimental_decimal = true
+    recursive_type_depth = 5
+}
+//надав посилання
+datasource db{
+    provider = "postgresql"
+    url = env("DATABASE_URL")
+}
+
+// Визначення з собою чи ні(пробне)
+enum OrderType{
+    IN_RESTAURANT
+    TAKEAWAY
+}
+//інгрідієнти, має посилання на перевалочну табличку страва-інгредієнт
+model Ingredient{
+    Ingredient_id Int @id @default(autoincrement())
+    Ing_name String @unique
+
+    dishes DishIngredient[]
+}
+//страви з посиланням на дві перевалочні таблички, страва-інгредієнт, замовлення-страва
+model Dish{
+    Dish_id Int @id @default(autoincrement())
+    Dish_name String @unique
+    Price Float
+
+    orderItem OrderItem[]
+    ingredients DishIngredient[]   
+}
+//замовлення, посилання на перевалочну табличку замовлення-страва
+model Order{
+    Order_id Int @id @default(autoincrement())
+    Table_name Int?
+    Order_type OrderType
+    Total_price Float
+    Create_time DateTime @default(now())
+
+    items OrderItem[]
+}
+
+//Перевалочна табличка страва-інгредієнт, також поставив тут ключ, щоб не повторювати одну і ту саму дію зі стравами наприклад
+model DishIngredient{
+    dish Dish @relation(fields: [DishId], references: [Dish_id])
+    DishId Int
+    ingredient Ingredient @relation(fields: [IngredientId], references: [Ingredient_id])
+    IngredientId Int
+
+    @@id([DishId, IngredientId]) // Складений первинний ключ
+}
+//табличка страва-замовлення, для регулювання кількості страв в замовленні
+model OrderItem{
+    OrderItem_id Int @id @default(autoincrement())
+    order Order @relation(fields: [OrderId], references: [Order_id])
+    OrderId Int
+    dish Dish @relation(fields: [DishId], references: [Dish_id])
+    DishId Int
+    Quantity Int
+}
