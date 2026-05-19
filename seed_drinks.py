@@ -6,7 +6,6 @@ async def main():
     await db.connect()
     print("Підключено до бази даних для завантаження напоїв...")
 
-    # Список напоїв з цінами (назви мають точно збігатися з drinks_list у твоїй моделі)
     drinks_to_add = [
         {"Dish_name": "Кава", "Price": 45.0},
         {"Dish_name": "Чай", "Price": 35.0},
@@ -18,7 +17,6 @@ async def main():
     ]
 
     for drink in drinks_to_add:
-        # Перевіряємо, чи раптом такий напій уже не існує в базі
         existing = await db.dish.find_unique(
             where={"Dish_name": drink["Dish_name"]}
         )
