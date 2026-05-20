@@ -156,20 +156,47 @@ class RestaurantModel:
         pass
 
     def change_default_ingredient_amount(self, dish_name, ing_name, amount):
-        """
-        Зміна дефолтної (базової) кількості грамів/одиниць інгредієнта в рецепті (Пункт 1.3 ТЗ).
-        
-        Аргументи:
-            dish_name (str): Назва страви.
-            ing_name (str): Назва інгредієнта у складі страви.
-            amount (int): Крок зміни кількості (наприклад: +10 або -10).
-        Повертає:
-            None
+    #     if dish_name in self.dish_ingredients_matrix and ing_name in self.dish_ingredients_matrix[dish_name]:
+    #         current_meta = self.dish_ingredients_matrix[dish_name][ing_name]
+    #         val_str, symbol = current_meta.split()
+
+    #         new_amont = int(val_str) + amount
+    #         if new_amount < 0:
+    #             new_amount = 0.0
             
-        БЕКЕНД-ЗАДАЧА: Оновити числове значення ваги у полі метаданих таблиці рецептур Recipes. 
-        Якщо вага зменшується до 0, а маркер типу інгредієнта є необов'язковим ('*' або '!'), 
-        перевести його в режим прихованого деактивованого стану ('0 !').
-        """
+    #         self.dish_ingredients_matrix[dish_name][ing_name] = f"{new_amount} {symbol}"
+            
+    #         price_for_unit = 1 #ціна за одиницю
+    #         price_diff = price_for_unit * amount
+
+    #         for category, dishes in self.menu_database.items():
+    #             if dish_name in dishes:
+    #                 current_price = dishes[dish_name].get("PRICE", 0.0)
+    #                 new_price = current_price + price_diff
+
+    #                 if new_price < 0:
+    #                     new_price < 0.0
+                    
+    #                 self.menu_database[category][dish_name]["PRICE"] = new_price
+    #                 print(f" Нова базова ціна для '{dish_name}': {new_price} грн.")
+    #                 break
+
+
+    #         loop = asyncio.get_event_loop()
+    #         loop.run_until_complete(self._async_update_recipe_in_db(dish_name, new_price))
+
+
+    # async def _async_update_recipe_in_db(self, dish_name, new_price):
+    #     """Асинхронно зберігає нову ціну страви в PostgreSQL через Prisma"""
+    #     # Шукаємо страву в базі
+    #     dish = await self.db.dish.find_unique(where={"Dish_name": dish_name})
+        
+    #     if dish:
+    #         # Оновлюю ціну
+    #         await self.db.dish.update(
+    #             where={"Dish_id": dish.Dish_id},
+    #             data={"Price": float(new_price)}
+    #         )
         pass
 
     def remove_ingredient_from_default_dish(self, dish_name, ing_name):
@@ -254,6 +281,7 @@ class RestaurantModel:
         if self.current_table_num > 20: self.current_table_num = 20
 
     async def select_dish(self, dish_name):
+        self.current_extra_price = 0.0
         self.selected_dish = dish_name
         self.current_dish_ingredients = []
 
@@ -299,13 +327,16 @@ class RestaurantModel:
         pass
 
     def get_current_dish_price(self):
-        # Якщо страву не вибрано - ціна 0
         if not self.selected_dish: 
             return 0.0
             
-        # Беру базову ціну з нашого словника, який ми завантажили при старті
         base_price = self.menu_data.get(self.selected_category, {}).get(self.selected_dish, 0.0)
-        return float(base_price)
+        
+        extra_price = getattr(self, 'current_extra_price', 0.0)
+        
+        final_price = float(base_price) + extra_price
+        
+        return final_price if final_price > 0 else 0.0
 
     def save_current_dish_snapshot(self, index=None):
         """
@@ -482,14 +513,21 @@ class RestaurantModel:
         pass
 
     def change_ingredient_count(self, idx, amount):
-        # Перевіряю, чи існує такий інгредієнт
         if 0 <= idx < len(self.current_dish_ingredients):
-            # Змінюю його кількість
+            old_count = self.current_dish_ingredients[idx]['count']
             self.current_dish_ingredients[idx]['count'] += amount
             
-            # Вага не може бути меншою за нуль
             if self.current_dish_ingredients[idx]['count'] < 0:
                 self.current_dish_ingredients[idx]['count'] = 0
+                
+            actual_difference = self.current_dish_ingredients[idx]['count'] - old_count
+            
+            price_per_unit = 0.5 
+            
+            if not hasattr(self, 'current_extra_price'):
+                self.current_extra_price = 0.0
+                
+            self.current_extra_price += actual_difference * price_per_unit
     def get_filtered_order_keys(self, query):
         """Синхронний міст для Pygame, щоб дочекатися базу даних"""
         loop = asyncio.get_event_loop()
