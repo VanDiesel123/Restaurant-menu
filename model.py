@@ -595,19 +595,27 @@ class RestaurantModel:
     def load_dish_from_snapshot(self, snapshot):
         """
         Завантаження збереженого зліпка страви з кошика назад у робочу область для редагування компонентів.
-        Викликається, коли користувач клікає по страві всередині свого кошика замовлення.
-        
-        Аргументи:
-            snapshot (dict): Словник-зліпок стану страви, який містить її назву та кастомні кількості.
-        Повертає:
-            None (Ініціалізує self.current_dish_ingredients кастомними грамами зі зліпка)
-            
-        БЕКЕНД-ЗАДАЧА: Зчитати назву страви зі зліпка, підняти її базову структуру рецепту з Recipes.
-        Якщо інгредієнт присутній у кастомному зліпку — завантажити його вагу звідти, інакше — взяти дефолт бази.
         """
         self.selected_dish = snapshot["DISH_NAME"]
         self.current_dish_ingredients = []
-        pass
+        
+        # Перевіряємо, чи є рецепт для цієї страви
+        if self.selected_dish in self.dish_ingredients_matrix:
+            for ing_name, meta in self.dish_ingredients_matrix[self.selected_dish].items():
+                val_str, symbol = meta.split()
+                
+                # Якщо інгредієнт був змінений і збережений у зліпку (чеку)
+                if ing_name in snapshot:
+                    current_count = snapshot[ing_name]
+                    # Якщо це кастомний інгредієнт і його кількість 0 - просто не показуємо його
+                    if symbol in ['*', '!'] and current_count <= 0: 
+                        continue
+                    self.current_dish_ingredients.append({"name": ing_name, "count": current_count, "symbol": symbol})
+                
+                # Якщо його в зліпку немає, але він базовий ($ або &) - завантажуємо дефолт
+                else:
+                    if symbol in ['$', '&']:
+                        self.current_dish_ingredients.append({"name": ing_name, "count": int(val_str), "symbol": symbol})
 
     def get_current_dish_price(self):
         # Якщо страву не вибрано - сума 0
@@ -688,10 +696,10 @@ class RestaurantModel:
         if order_id in self.my_orders_database:
             order_data = self.my_orders_database[order_id]
             
-            # 1. Відновлюємо номер столика
+            # 1. Відновлюю номер столика
             self.current_table_num = order_data["table"]
             
-            # 2. Перекидаємо страви з чека у тимчасовий кошик контролера
+            # 2. Перекидаю страви з чека у тимчасовий кошик контролера
             import copy
             self.basket_dishes = copy.deepcopy(order_data["dishes"])
             
@@ -700,19 +708,46 @@ class RestaurantModel:
             
         return False
 
-    def save_edited_order(self, order_id):
+    async def save_edited_order(self, order_id):
         """
-        Фіксація та перезапис раніше піднятого архівного замовлення новими зміненими даними (Пункт 3.3 ТЗ).
-        
-        Аргументи:
-            order_id (int): Унікальний номер чека, який редагувався.
-        Повертає:
-            bool: True при успішному оновленні рядків у базі даних, False — у разі помилки.
+        Фіксація та перезапис раніше піднятого архівного замовлення новими зміненими даними.
+        """
+        if not self.basket_dishes:
+            return False
+
+        total_price = self.get_total_order_price()
+        new_table = self.current_table_num
+
+        await self.db.order.update(
+            where={"Order_id": order_id},
+            data={
+                "Table_name": new_table,
+                "Total_price": float(total_price)
+            }
+        )
+
+        await self.db.orderitem.delete_many(
+            where={"OrderId": order_id}
+        )
+
+        for item in self.basket_dishes:
+            dish_name = item["DISH_NAME"]
+            dish = await self.db.dish.find_unique(where={"Dish_name": dish_name})
             
-        БЕКЕНД-ЗАДАЧА: Виконати комплексний UPDATE запит у таблиці замовлень для рядка order_id.
-        Записати новий номер столика та оновлений список зліпків кастомізованих страв із кошика, після чого очистити кошик.
-        """
-        return False
+            if dish:
+                await self.db.orderitem.create(
+                    data={
+                        "OrderId": order_id,
+                        "DishId": dish.Dish_id,
+                        "Quantity": 1
+                    }
+                )
+
+        self.basket_dishes = []
+        self.current_table_num = 7
+        
+        print(f"Замовлення №{order_id} успішно оновлено! Новий стіл: {new_table}, Сума: {total_price:.2f} грн.")
+        return True
 
     async def confirm_and_close_order(self):
 

@@ -152,12 +152,11 @@ class RestaurantController:
 
     def submit_entire_order(self):
         if self.edit_mode:
-            # Функцію редагування ми ще не писали, тому поки залишимо заглушку
-            # self.model.save_edited_order(self.editing_order_id)
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self.model.save_edited_order(self.editing_order_id))
             self.edit_mode = False
             self.editing_order_id = None
         elif self.model.basket_dishes:
-            # МАГІЯ ТУТ: Змушуємо синхронний Pygame дочекатися асинхронної бази
             loop = asyncio.get_event_loop()
             loop.run_until_complete(self.model.confirm_and_close_order())
             
