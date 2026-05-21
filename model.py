@@ -280,19 +280,49 @@ class RestaurantModel:
     # =========================================================================
 
     def rename_dish_in_database(self, old_name, new_name):
-        """
-        Перейменування існуючої страви у базі даних (Пункт 2.3.2 ТЗ).
-        
-        Аргументи:
-            old_name (str): Поточна унікальна назва страви (старий ключ).
-            new_name (str): Нова текстова назва страви (новий ключ).
-        Повертає:
-            None
+        """Зміна назви страви у всіх словниках та базі даних PostgreSQL"""
+        new_name = new_name.strip()
+        if not new_name or old_name == new_name:
+            return
             
-        БЕКЕНД-ЗАДАЧА: Виконати UPDATE запит у таблицях меню, рецептів, описів та 
-        інгредієнтів. Також каскадно оновити назву страви в архівних замовленнях, якщо потрібно.
-        """
-        pass
+        # 1. Переносю дані в нові ключі у словниках оперативної пам'яті
+        for category in self.menu_data:
+            if old_name in self.menu_data[category]:
+                # Бераю всі дані зі старої назви і кладемо в нову, а стару стираємо
+                self.menu_data[category][new_name] = self.menu_data[category].pop(old_name)
+                break
+                
+        if old_name in self.dish_cooking_time:
+            self.dish_cooking_time[new_name] = self.dish_cooking_time.pop(old_name)
+        if old_name in self.descriptions:
+            self.descriptions[new_name] = self.descriptions.pop(old_name)
+        if old_name in self.dish_ingredients_matrix:
+            self.dish_ingredients_matrix[new_name] = self.dish_ingredients_matrix.pop(old_name)
+            
+        # Якщо ця страва зараз обрана в налаштуваннях - оновлюю вибір
+        if getattr(self, 'selected_dish', None) == old_name:
+            self.selected_dish = new_name
+            
+        # 2. Оновлюю дані назавжди в PostgreSQL
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._async_rename_dish(old_name, new_name))
+
+    async def _async_rename_dish(self, old_name, new_name):
+        """Асинхронний помічник для оновлення імені в усіх таблицях БД"""
+        # Оновлюю ім'я у головній таблиці страв
+        target = await self.db.dish.find_first(where={"Dish_name": old_name})
+        if target:
+            await self.db.dish.update(
+                where={"Dish_id": target.Dish_id},
+                data={"Dish_name": new_name}
+            )
+            
+        # Каскадно оновлюю прив'язані рецепти в таблиці
+        await self.db.recipeitem.update_many(
+            where={"dish_name": old_name},
+            data={"dish_name": new_name}
+        )
+        print(f"Назву страви успішно змінено: '{old_name}' -> '{new_name}'!")
 
     def change_global_ingredient_price(self, dish, ing, amount):
         """

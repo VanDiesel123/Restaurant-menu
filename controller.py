@@ -593,7 +593,7 @@ class RestaurantController:
                                 self.screen.blit(surf, (70, y_pos))
                                 pygame.draw.line(self.screen, VIOLET, [75, y_pos + 45], [625, y_pos + 45], 1)
                     else:
-                        dish_ings_dict = self.model.dish_ingredients_matrix[self.selected_settings_dish]
+                        dish_ings_dict = self.model.dish_ingredients_matrix.get(self.selected_settings_dish, {})
                         active_ings = []
                         for name, meta in dish_ings_dict.items():
                             val_str, symbol = meta.split()
