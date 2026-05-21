@@ -28,6 +28,7 @@ model Dish{
     Dish_id Int @id @default(autoincrement())
     Dish_name String @unique
     Price Float
+    Cooking_time Int @default(25)
 
     orderItem OrderItem[]
     ingredients DishIngredient[]   
@@ -60,4 +61,10 @@ model OrderItem{
     dish Dish @relation(fields: [DishId], references: [Dish_id])
     DishId Int
     Quantity Int
+}
+model RecipeItem {
+  id          Int    @id @default(autoincrement())
+  dish_name   String
+  ing_name    String
+  meta_data   String
 }

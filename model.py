@@ -28,8 +28,13 @@ class RestaurantModel:
             "Напої": {},
         }
 
-        # 3. Таблиця DishConfigurations: Зберігає тривалість приготування страв { dish_name (str): minutes (int) }
-        self.dish_cooking_time = {}
+        # 3. Таблиця DishConfigurations: Зберігає тривалість приготування страв 
+        self.dish_cooking_time = {
+            "Борщ український": 25, "Плов з телятиною": 35, "Салат Цезар": 15,
+            "Стейк Рибай": 20, "Суп томатний": 15, "Деруни зі сметаною": 20,
+            "Вареники з капустою": 15, "Пельмені домашні": 15, "Шашлик свинячий": 25,
+            "Котлета по-київськи": 20
+        }
         
         # 4. Таблиця DishDescriptions: Текстові рядки описів страв для середньої колонки
         self.descriptions = {
@@ -82,7 +87,52 @@ class RestaurantModel:
         }
         
         # 5. Таблиця Recipes: Технологічні карти страв { dish_name (str): { ing_name (str): "вартість_маркер" } }
-        self.dish_ingredients_matrix = {}
+        self.dish_ingredients_matrix = {
+            "Борщ український": {
+                "Яловичина (г)": "100 $", "Буряк (г)": "80 &", "Капуста (г)": "50 *",
+                "Картопля (г)": "60 *", "Сметана (г)": "30 *", "Пампушки (шт)": "2 &",
+                "Часник (част)": "3 *", "Зелень (г)": "10 *", "Сало (г)": "20 *",
+                "Цибуля зелена (г)": "15 *", "Квасоля (г)": "0 !", "Перець чилі (шт)": "0 !"
+            },
+            "Плов з телятиною": {
+                "Рис (г)": "150 $", "Телятина (г)": "120 $", "Mорква (г)": "50 &",
+                "Цибуля (г)": "40 *", "Зіра (г)": "5 *", "Барбарис (г)": "5 *",
+                "Часник головка (шт)": "1 *", "Родзинки (г)": "15 *", "Гострий перець (шт)": "0 !"
+            },
+            "Салат Цезар": {
+                "Куряче філе (г)": "100 $", "Листя салату (г)": "80 &", "Пармезан (г)": "20 &",
+                "Сухарики (г)": "15 *", "Соус Цезар (г)": "30 *", "Томати чері (шт)": "4 *",
+                "Перепелині яйця (шт)": "3 *", "Бекон хрусткий (г)": "0 !"
+            },
+            "Стейк Рибай": {
+                "Мармурова яловичина (г)": "300 $", "Вершкове масло (г)": "20 &", "Розмарин (гілочка)": "1 *",
+                "Часник (част)": "2 *", "Соус Барбекю (г)": "0 !", "Соус Грибний (г)": "0 !", "Спаржа на грилі (г)": "0 !"
+            },
+            "Суп томатний": {
+                "Tomaty (g)": "200 $", "Bazylik (g)": "5 &", "Grinky (sht)": "2 *",
+                "Oliya (ml)": "10 &", "Parmezan (g)": "10 *", "Chasnyk (ch)": "1 *", "Mocarela (g)": "0 !"
+            },
+            "Деруни зі сметаною": {
+                "Картопля (г)": "250 $", "Цибуля (г)": "30 &", "Сметана (г)": "50 *",
+                "Смажена цибуля (г)": "20 *", "Гриби смажені (г)": "0 !", "Шкварки (г)": "0 !"
+            },
+            "Вареники з капустою": {
+                "Тісто (г)": "150 $", "Tuшкована капуста (г)": "150 $", "Цибулева засмажка (г)": "40 &",
+                "Сметана (г)": "50 *", "Шкварки (г)": "0 !"
+            },
+            "Пельмені домашні": {
+                "Мікс фаршу (г)": "150 $", "Тісто (г)": "120 $", "Вершкове масло (г)": "15 &",
+                "Сметана (г)": "40 *", "Оцет (мл)": "0 !", "Гірчиця (г)": "0 !", "Зелень кріп (г)": "5 *"
+            },
+            "Шашлик свинячий": {
+                "Svyanyaj oshyik (g)": "200 $", "Marynovana cybulya (g)": "50 &", "Sous (g)": "40 *",
+                "Lavash (шт)": "1 *", "Kynza (g)": "0 !", "Perec (g)": "0 !"
+            },
+            "Котлета по-київськи": {
+                "Kuryache file (g)": "150 $", "Vershkove maslo (g)": "30 $", "Panirovka (g)": "20 &",
+                "Krip (g)": "5 &", "Pyure (g)": "0 !", "Goroshok (g)": "0 !"
+            }
+        }
 
         # 6. Таблиця IngredientPrices: Матриця вартості грама/одиниці продукту для кожної страви
         self.dish_ingredients_price_matrix = {}
@@ -189,6 +239,37 @@ class RestaurantModel:
             else:
                 self.global_ingredients_prices[ing_name] = db_price
 
+        # =====================================================================
+        # 3. АВТОМАТИЧНА СИНХРОНІЗАЦІЯ РЕЦЕПТІВ З БАЗОЮ ДАНИХ
+        # =====================================================================
+
+        all_recipe_items = await self.db.recipeitem.find_many()
+        
+        # Якщо в БД ще немає рецептів, записуємо їх туди з нашого словника (один раз)
+        if not all_recipe_items:
+            print("Ініціалізація рецептів у базі даних...")
+            for dish_name, ingredients in self.dish_ingredients_matrix.items():
+                for ing_name, meta in ingredients.items():
+                    await self.db.recipeitem.create(
+                        data={
+                            "dish_name": dish_name,
+                            "ing_name": ing_name,
+                            "meta_data": meta
+                        }
+                    )
+            print("Матрицю рецептів успішно збережено в PostgreSQL")
+        else:
+            self.dish_ingredients_matrix = {}
+            
+            for category in self.menu_data.values():
+                for d_name in category:
+                    self.dish_ingredients_matrix[d_name] = {}
+                    
+            for item in all_recipe_items:
+                if item.dish_name not in self.dish_ingredients_matrix:
+                    self.dish_ingredients_matrix[item.dish_name] = {}
+                self.dish_ingredients_matrix[item.dish_name][item.ing_name] = item.meta_data
+
     async def disconnect_db(self):
         """Відключається від бази даних"""
         if self.db.is_connected():
@@ -229,96 +310,118 @@ class RestaurantModel:
         """
         pass
 
+
+    def delete_ingredient_type_completely(self, ing_name):
+        """Повне видалення інгредієнта з пулу, всіх рецептів та бази даних"""
+        if ing_name in self.global_ingredients_pool:
+            # 1. Видаляю з оперативної пам'яті
+            self.global_ingredients_pool.remove(ing_name)
+            if ing_name in self.global_ingredients_prices:
+                del self.global_ingredients_prices[ing_name]
+                
+            # Видаляю цей інгредієнт з усіх локальних матриць рецептів страв
+            for dish in self.dish_ingredients_matrix:
+                if ing_name in self.dish_ingredients_matrix[dish]:
+                    del self.dish_ingredients_matrix[dish][ing_name]
+
+            # 2. Видаляю з бази даних PostgreSQL
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self._async_delete_ingredient(ing_name))
+
+    async def _async_delete_ingredient(self, ing_name):
+        """Асинхронний помічник для видалення інгредієнта з усього коду БД"""
+        # Видаляю згадки інгредієнта з усіх технологічних карт страв
+        await self.db.recipeitem.delete_many(where={"ing_name": ing_name})
+        # Видаляю сам інгредієнт з таблиці Ingredient
+        await self.db.ingredient.delete_many(where={"Ing_name": ing_name})
+        print(f"Інгредієнт '{ing_name}' повністю стерто з бази даних ресторану!")
+    
+
     def change_global_dish_base_price(self, category, dish, amount):
-        """
-        Зміна базової вартості страви в меню з пропорційним масштабуванням цін інгредієнтів (Пункт 2.3.3 ТЗ).
-        
-        Аргументи:
-            category (str): Назва категорії, до якої належить страва ("Страви", "Напої"...).
-            dish (str): Назва страви, ціну якої змінює адміністратор.
-            amount (int): Величина кроку зміни ціни (наприклад: +5 або -5).
-        Повертає:
-            None
+        """Зміна базової вартості страви в меню з оновленням у БД"""
+        if category in self.menu_data and dish in self.menu_data[category]:
+            old_price = self.menu_data[category][dish]
+            new_price = max(5.0, old_price + amount)  # Не даю ціні впасти нижче 5 грн
             
-        БЕКЕНД-ЗАДАЧА: 
-            1. Зчитати поточну ціну з таблиці меню.
-            2. Вирахувати коефіцієнт зміни k = (стара_ціна + amount) / стара_ціна.
-            3. Записати нову ціну страви у таблицю меню.
-            4. Оновити таблицю IngredientPrices для цієї страви, помноживши ціну КОЖНОГО її інгредієнта на k.
-        """
-        pass
+            # 1. Оновлюю ціну в оперативній пам'яті
+            self.menu_data[category][dish] = float(new_price)
+            
+            # 2. Відправляю нову ціну в PostgreSQL
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self._async_update_dish_price(dish, new_price))
+
+    async def _async_update_dish_price(self, dish_name, new_price):
+        """Асинхронний помічник для збереження нової ціни страви"""
+        target_dish = await self.db.dish.find_first(where={"Dish_name": dish_name})
+        if target_dish:
+            await self.db.dish.update(
+                where={"Dish_id": target_dish.Dish_id},
+                data={"Price": float(new_price)}
+            )
+            print(f"Базу оновлено: {dish_name} тепер коштує {new_price} грн!")
 
     def change_global_cooking_time(self, dish, amount):
-        """
-        Редагування базового часу приготування страви (Пункт 2.3.4 ТЗ).
+        """Редагування базового часу приготування страви"""
+        # Якщо страви ще немає в словнику, даю їй базові 20 хвилин
+        if dish not in self.dish_cooking_time:
+            self.dish_cooking_time[dish] = 20
+            
+        # Змінюю час, але не дозволяюзробити його меншим за 1 хвилину
+        self.dish_cooking_time[dish] = max(1, self.dish_cooking_time[dish] + amount)
+
+    def delete_dish_from_menu_completely(self, dish):
+        """Повне видалення страви з меню, її рецептів та бази даних"""
         
-        Аргументи:
-            dish (str): Назва страви.
-            amount (int): Крок зміни часу в хвилинах (наприклад: +1 або -1).
-        Повертає:
-            None
-            
-        БЕКЕНД-ЗАДАЧА: Виконати UPDATE тривалості приготування у відповідній таблиці конфігурацій (мінімум 1 хв).
-        """
-        pass
-
-    def delete_dish_from_menu_completely(self, name):
-        """
-        Повне каскадне видалення страви з меню ресторану (Пункт 2.2 ТЗ).
+        # 1. Автоматично шукаю страву в категоріях і видаляю з пам'яті
+        for category in self.menu_data:
+            if dish in self.menu_data[category]:
+                del self.menu_data[category][dish]
+                break
+                
+        if dish in self.dish_cooking_time:
+            del self.dish_cooking_time[dish]
+        if dish in self.descriptions:
+            del self.descriptions[dish]
         
-        Аргументи:
-            name (str): Назва страви, яку видаляє адміністратор.
-        Повертає:
-            None
+        self.dish_ingredients_matrix[dish] = {}
+
+        # 2. Видаляю з бази даних PostgreSQL
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._async_delete_dish(dish))
+
+    async def _async_delete_dish(self, dish_name):
+        """Асинхронний помічник для очищення таблиць у БД"""
+        # Спочатку видаляю всі складники цієї страви з таблиці рецептів
+        await self.db.recipeitem.delete_many(where={"dish_name": dish_name})
+        # Тепер видаляю саму страву з таблиці Dish
+        await self.db.dish.delete_many(where={"Dish_name": dish_name})
+        print(f"Страва '{dish_name}' та її рецепти повністю видалені з PostgreSQL!")
+
+    def change_default_ingredient_amount(self, dish, ing_name, amount):
+        """Зміна кількості грамів/штук у Налаштуваннях з оновленням у БД"""
+        if dish in self.dish_ingredients_matrix and ing_name in self.dish_ingredients_matrix[dish]:
+            meta_str = self.dish_ingredients_matrix[dish][ing_name]
+            val_str, symbol = meta_str.split()
             
-        БЕКЕНД-ЗАДАЧА: Виконати каскадний DELETE запит. Видалити рядок страви з меню, 
-        а також очистити пов'язані з нею записи в таблицях рецептур, цін інгредієнтів та описів.
-        """
-        pass
-
-    def change_default_ingredient_amount(self, dish_name, ing_name, amount):
-    #     if dish_name in self.dish_ingredients_matrix and ing_name in self.dish_ingredients_matrix[dish_name]:
-    #         current_meta = self.dish_ingredients_matrix[dish_name][ing_name]
-    #         val_str, symbol = current_meta.split()
-
-    #         new_amont = int(val_str) + amount
-    #         if new_amount < 0:
-    #             new_amount = 0.0
+            # Не дозволяємо опустити базову кількість нижче 0
+            new_val = max(0, int(val_str) + amount)
+            new_meta = f"{new_val} {symbol}"
             
-    #         self.dish_ingredients_matrix[dish_name][ing_name] = f"{new_amount} {symbol}"
+            self.dish_ingredients_matrix[dish][ing_name] = new_meta
             
-    #         price_for_unit = 1 #ціна за одиницю
-    #         price_diff = price_for_unit * amount
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self._async_update_recipe(dish, ing_name, new_meta))
 
-    #         for category, dishes in self.menu_database.items():
-    #             if dish_name in dishes:
-    #                 current_price = dishes[dish_name].get("PRICE", 0.0)
-    #                 new_price = current_price + price_diff
-
-    #                 if new_price < 0:
-    #                     new_price < 0.0
-                    
-    #                 self.menu_database[category][dish_name]["PRICE"] = new_price
-    #                 print(f" Нова базова ціна для '{dish_name}': {new_price} грн.")
-    #                 break
-
-
-    #         loop = asyncio.get_event_loop()
-    #         loop.run_until_complete(self._async_update_recipe_in_db(dish_name, new_price))
-
-
-    # async def _async_update_recipe_in_db(self, dish_name, new_price):
-    #     """Асинхронно зберігає нову ціну страви в PostgreSQL через Prisma"""
-    #     # Шукаємо страву в базі
-    #     dish = await self.db.dish.find_unique(where={"Dish_name": dish_name})
-        
-    #     if dish:
-    #         # Оновлюю ціну
-    #         await self.db.dish.update(
-    #             where={"Dish_id": dish.Dish_id},
-    #             data={"Price": float(new_price)}
-    #         )
-        pass
+    async def _async_update_recipe(self, dish_name, ing_name, new_meta):
+        target = await self.db.recipeitem.find_first(
+            where={"dish_name": dish_name, "ing_name": ing_name}
+        )
+        if target:
+            await self.db.recipeitem.update(
+                where={"id": target.id},
+                data={"meta_data": new_meta}
+            )
+            print(f"Рецепт оновлено в БД: {dish_name} -> {ing_name}: {new_meta}")
 
     def remove_ingredient_from_default_dish(self, dish_name, ing_name):
         """
@@ -336,51 +439,80 @@ class RestaurantModel:
         """
         pass
 
-    def add_ingredient_to_default_dish(self, dish_name, ing_name):
-        """
-        Додавання нового складника до дефолтної технологічної карти страви (Пункт 2.3.1 ТЗ).
-        Також автоматично коригує базову вартість страви, додаючи ціну нової порції.
-        
-        Аргументи:
-            dish_name (str): Назва страви, в яку додають продукт.
-            ing_name (str): Назва продукту із загального пулу глобальних інгредієнтів.
-        Повертає:
-            None
+    def add_ingredient_to_default_dish(self, dish, ing_name):
+        """Додавання абсолютно нового складника до Налаштувань з оновленням у БД"""
+        if not dish: return
+        if dish not in self.dish_ingredients_matrix:
+            self.dish_ingredients_matrix[dish] = {}
             
-        БЕКЕНД-ЗАДАЧА: 
-            1. Записати дефолтну початкову вагу і тип ('50 *') у таблицю Recipes для цієї страви.
-            2. Перевірити наявність інгредієнта в таблиці цін IngredientPrices для цієї страви. Якщо немає — задати дефолт (наприклад, 0.50 грн/г).
-            3. Вирахувати вартість доданої порції: 50г * ціна_за_грам.
-            4. Виконати UPDATE базової вартості цієї страви в таблиці меню menu_data, додавши отриману вартість порції.
-        """
-        pass
+        if ing_name not in self.dish_ingredients_matrix[dish]:
+            new_meta = "0 *"
+            self.dish_ingredients_matrix[dish][ing_name] = new_meta
+            
+            # Додаємо запис у БД
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self._async_add_recipe_item(dish, ing_name, new_meta))
+
+    async def _async_add_recipe_item(self, dish_name, ing_name, new_meta):
+        await self.db.recipeitem.create(
+            data={
+                "dish_name": dish_name,
+                "ing_name": ing_name,
+                "meta_data": new_meta
+            }
+        )
+        print(f"В базу рецептів додано: {dish_name} -> {ing_name}")
 
     def add_new_ingredient_type(self, name):
-        """
-        Створення абсолютно нового типу інгредієнта в глобальній системі (Пункт 1.1 ТЗ).
-        
-        Аргументи:
-            name (str): Назва нового продукту (наприклад: "Авокадо (г)").
-        Повертає:
-            None
+        """Створення абсолютно нового типу інгредієнта з оновленням у БД"""
+        # Перевіряю, чи немає вже такого інгредієнта у списку
+        if not name.strip() or name in self.global_ingredients_pool:
+            return
             
-        БЕКЕНД-ЗАДАЧА: Виконати INSERT запит у глобальну таблицю/пул доступних інгредієнтів IngredientsPool.
-        """
-        pass
+        # 1. Записую в оперативну пам'ять
+        self.global_ingredients_pool.append(name)
+        self.global_ingredients_prices[name] = 0.50 # Дефолтна ціна 0.50 грн за одиницю
+        
+        # 2. Зберігаю інгредієнт у базу даних PostgreSQL
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._async_add_ingredient_to_db(name))
+
+    async def _async_add_ingredient_to_db(self, ing_name):
+        """Асинхронний помічник для створення інгредієнта"""
+        await self.db.ingredient.create(
+            data={
+                "Ing_name": ing_name,
+                "Ing_price": 0.50
+            }
+        )
+        print(f"Новий інгредієнт '{ing_name}' додано до бази даних!")
 
     def add_new_dish_to_menu(self, name):
-        """
-        Створення та первинна ініціалізація нової порожньої страви в меню (Пункт 2.1 ТЗ).
-        
-        Аргументи:
-            name (str): Назва нової страви.
-        Повертає:
-            None
+        """Створення та ініціалізація нової страви в меню з оновленням у БД"""
+        # Перевіряю, чи назва не порожня і чи немає вже такої страви
+        if not name.strip() or name in self.menu_data["Страви"]:
+            return
             
-        БЕКЕНД-ЗАДАЧА: Виконати INSERT запису нової страви із дефолтною ціною (наприклад, 100 грн) у категорію меню.
-        Створити супутні порожні або дефолтні рядки конфігурацій у таблицях часу приготування, описів та рецептур.
-        """
-        pass
+        # 1. Записую в оперативну пам'ять (щоб візуал оновився миттєво)
+        self.menu_data["Страви"][name] = 100.0  # Дефолтна ціна (100 грн)
+        self.dish_cooking_time[name] = 20       # Дефолтний час приготування
+        self.descriptions[name] = ["Кастомна страва від Адміністратора."]
+        self.dish_ingredients_matrix[name] = {}
+        
+        # 2. Зберігаю нову страву в базу даних PostgreSQL
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._async_add_dish_to_db(name))
+
+    async def _async_add_dish_to_db(self, dish_name):
+        """Асинхронний помічник для створення страви"""
+        await self.db.dish.create(
+            data={
+                "Dish_name": dish_name,
+                "Price": 100.0,
+                "Cooking_time": 20
+            }
+        )
+        print(f"Нову страву '{dish_name}' додано до бази даних!")
 
 
     # =========================================================================
