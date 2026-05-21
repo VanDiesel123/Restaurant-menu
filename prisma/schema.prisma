@@ -19,6 +19,7 @@ enum OrderType{
 model Ingredient{
     Ingredient_id Int @id @default(autoincrement())
     Ing_name String @unique
+    Ing_price Float @default(0.50)
 
     dishes DishIngredient[]
 }

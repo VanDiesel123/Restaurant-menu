@@ -43,30 +43,104 @@ class RestaurantModel:
         # 7. Таблиця IngredientsPool: Загальний глобальний перелік усіх можливих складників (list of str)
         self.global_ingredients_pool = []
 
+        # 8. Нова колонка/таблиця глобальних цін інгредієнтів (перенесено з Prisma)
+        self.global_ingredients_prices = {
+            "Яловичина (г)": 0.60,
+            "Буряк (г)": 0.10,
+            "Капуста (г)": 0.08,
+            "Картопля (г)": 0.10,
+            "Сметана (г)": 0.40,
+            "Пампушки (шт)": 8.00,
+            "Часник (част)": 1.50,
+            "Зелень (г)": 0.70,
+            "Сало (г)": 0.90,
+            "Цибуля зелена (г)": 0.50,
+            "Квасоля (г)": 0.35,
+            "Перець чилі (шт)": 6.00,
+            "Рис (г)": 0.20,
+            "Телятина (г)": 0.75,
+            "Mорква (г)": 0.12, 
+            "Цибуля (г)": 0.08,
+            "Зіра (г)": 1.50,
+            "Барбарис (г)": 2.00,
+            "Часник головка (шт)": 7.00,
+            "Родзинки (г)": 0.50,
+            "Гострий перець (шт)": 4.50,
+            "Куряче філе (г)": 0.65,
+            "Листя салату (г)": 0.30,
+            "Пармезан (г)": 1.10,
+            "Сухарики (г)": 0.20,
+            "Соус Цезар (г)": 0.50,
+            "Томати чері (шт)": 3.50,
+            "Перепелині яйця (шт)": 4.00,
+            "Бекон хрусткий (г)": 0.85,
+            "Мармурова яловичина (г)": 1.05,
+            "Вершкове масло (г)": 0.50,
+            "Розмарин (гілочка)": 10.00,
+            "Соус Барбекю (г)": 0.40,
+            "Соус Грибний (г)": 0.45,
+            "Спаржа на грилі (г)": 0.90
+        }
+
     async def connect_db(self):
         """Підключається до бази даних PostgreSQL"""
         await self.db.connect()
         print("Модель успішно підключена до PostgreSQL!")
         
+        # =====================================================================
+        # 1. ЗАВАНТАЖЕННЯ СТРАВ ТА НАПОЇВ
+        # =====================================================================
         all_dishes = await self.db.dish.find_many()
         
-        # Очищаємо обидві категорії перед завантаженням
         self.menu_data["Страви"] = {}
         self.menu_data["Напої"] = {}
         
-        # Створюємо "шпаргалку" для програми: які назви вважати напоями
         drinks_list = ["Кава", "Чай", "Кола", "Лимонад", "Сік", "Еспресо", "Капучино"]
         
-        # Перебираємо всі записи з бази
         for dish in all_dishes:
-            # Якщо назва є в нашому списку напоїв — кладемо у "Напої"
             if dish.Dish_name in drinks_list:
                 self.menu_data["Напої"][dish.Dish_name] = float(dish.Price)
-            # Усе інше вважаємо "Стравами"
             else:
                 self.menu_data["Страви"][dish.Dish_name] = float(dish.Price)
             
         print("Меню успішно завантажено та розсортовано!")
+
+        # =====================================================================
+        # 2. НОВИЙ БЛОК: ЗАВАНТАЖЕННЯ ІНГРЕДІЄНТІВ ТА ЇХНІХ ЦІН З БД
+        # =====================================================================
+        self.global_ingredients_pool = []
+        
+        correct_prices_dict = {
+            "Яловичина (г)": 0.60, "Буряк (г)": 0.10, "Капуста (г)": 0.08, "Картопля (г)": 0.10,
+            "Сметана (г)": 0.40, "Пампушки (шт)": 8.00, "Часник (част)": 1.50, "Зелень (г)": 0.70,
+            "Сало (г)": 0.90, "Цибуля зелена (г)": 0.50, "Квасоля (г)": 0.35, "Перець чилі (шт)": 6.00,
+            "Рис (г)": 0.20, "Телятина (г)": 0.75, "Mорква (г)": 0.12, "Цибуля (г)": 0.08,
+            "Зіра (г)": 1.50, "Барбарис (г)": 2.00, "Часник головка (шт)": 7.00, "Родзинки (г)": 0.50,
+            "Гострий перець (шт)": 4.50, "Куряче філе (г)": 0.65, "Листя салату (г)": 0.30,
+            "Пармезан (г)": 1.10, "Сухарики (г)": 0.20, "Соус Цезар (г)": 0.50, "Томати чері (шт)": 3.50,
+            "Перепелині яйця (шт)": 4.00, "Бекон хрусткий (г)": 0.85, "Мармурова яловичина (г)": 1.05,
+            "Вершкове масло (г)": 0.50, "Розмарин (гілочка)": 10.00, "Соус Барбекю (г)": 0.40,
+            "Соус Грибний (г)": 0.45, "Спаржа на грилі (г)": 0.90
+        }
+
+        all_ingredients = await self.db.ingredient.find_many()
+
+        for ing in all_ingredients:
+            ing_name = ing.Ing_name  
+            db_price = float(ing.Ing_price)
+            self.global_ingredients_pool.append(ing_name)
+            
+            correct_price = correct_prices_dict.get(ing_name, 0.50)
+            
+            if db_price != correct_price:
+                await self.db.ingredient.update_many(
+                    where={"Ing_name": ing_name},  
+                    data={"Ing_price": correct_price}
+                )
+                print(f"Базу оновлено: {ing_name} = {correct_price} грн")
+                self.global_ingredients_prices[ing_name] = correct_price
+            else:
+                self.global_ingredients_prices[ing_name] = db_price
 
     async def disconnect_db(self):
         """Відключається від бази даних"""
@@ -327,16 +401,34 @@ class RestaurantModel:
         pass
 
     def get_current_dish_price(self):
-        if not self.selected_dish: 
+        # Якщо страву не вибрано - сума 0
+        if not getattr(self, 'selected_dish', None): 
             return 0.0
             
-        base_price = self.menu_data.get(self.selected_category, {}).get(self.selected_dish, 0.0)
+        # Беремо "відкалібровані" ціни для рідних інгредієнтів страви
+        price_rules = getattr(self, 'dish_ingredients_price_matrix', {}).get(self.selected_dish, {})
+        total = 0.0
         
-        extra_price = getattr(self, 'current_extra_price', 0.0)
-        
-        final_price = float(base_price) + extra_price
-        
-        return final_price if final_price > 0 else 0.0
+        for ing in self.current_dish_ingredients:
+            name = ing["name"]
+            count = ing["count"]
+            
+            # 1. Якщо це "рідний" інгредієнт рецепту
+            if name in price_rules:
+                price = price_rules[name]
+                
+            # 2. Якщо це "чужий" інгредієнт (доданий з правої панелі)
+            # Беремо його РЕАЛЬНУ ціну з бази даних
+            elif hasattr(self, 'global_ingredients_prices') and name in self.global_ingredients_prices:
+                price = self.global_ingredients_prices[name]
+                
+            # 3. Підстраховка на випадок збою
+            else:
+                price = 0.50
+                
+            total += count * price
+            
+        return round(total, 2)
 
     def save_current_dish_snapshot(self, index=None):
         """
@@ -490,27 +582,48 @@ class RestaurantModel:
     # =========================================================================
 
     def get_available_ingredients(self):
-        """
-        Отримання відсортованого списку інгредієнтів, які ще НЕ додані до поточної страви.
-        Використовується для наповнення правої колонки доступних продуктів у режимі додавання складників.
+        base_pool = [
+            "Яловичина (г)", "Буряк (г)", "Капуста (г)", "Картопля (г)", "Сметана (г)", 
+            "Пампушки (шт)", "Часник (част)", "Зелень (г)", "Сало (г)", "Цибуля зелена (г)", 
+            "Квасоля (г)", "Перець чилі (шт)", "Рис (г)", "Телятина (г)", "Mорква (г)", 
+            "Цибуля (г)", "Зіра (г)", "Барбарис (г)", "Часник головка (шт)", "Родзинки (г)", 
+            "Гострий перець (шт)", "Куряче філе (г)", "Листя салату (г)", "Пармезан (г)", 
+            "Сухарики (г)", "Соус Цезар (г)", "Томати чері (шт)", "Перепелині яйця (шт)", 
+            "Бекон хрусткий (г)", "Мармурова яловичина (г)", "Вершкове масло (г)", 
+            "Розмарин (гілочка)", "Соус Барбекю (г)", "Соус Грибний (г)", "Спаржа на грилі (г)"
+        ]
         
-        Аргументи:
-            None
-        Повертає:
-            list of str: Перелік назв доступних для вибору продуктів із глобального пулу.
-        """
-        return []
+        all_possible = getattr(self, 'global_ingredients_pool', base_pool)
+        
+        if not all_possible:
+            all_possible = base_pool
+
+        already_added = []
+        if hasattr(self, 'current_dish_ingredients'):
+            for ing in self.current_dish_ingredients:
+                already_added.append(ing.get('name', ''))
+                
+        available = []
+
+        for ing in all_possible:
+            if ing not in already_added:
+                available.append(ing)
+
+        return sorted(available)
+
 
     def add_ingredient_back(self, ing_name):
-        """
-        Повернення раніше видаленого необов'язкового інгредієнта назад до складу поточної робочої страви у CREATE.
-        
-        Аргументи:
-            ing_name (str): Назва продукту.
-        Повертає:
-            None (Додає об'єкт конфігурації у self.current_dish_ingredients)
-        """
-        pass
+        if not self.selected_dish:
+            return
+            
+        start_count = 50 if "(г)" in ing_name else 10
+            
+        if ing_name in self.dish_ingredients_matrix.get(self.selected_dish, {}):
+            meta = self.dish_ingredients_matrix[self.selected_dish][ing_name]
+            val_str, symbol = meta.split()
+            self.current_dish_ingredients.append({"name": ing_name, "count": start_count, "symbol": symbol})
+        else:
+            self.current_dish_ingredients.append({"name": ing_name, "count": start_count, "symbol": "*"})
 
     def change_ingredient_count(self, idx, amount):
         if 0 <= idx < len(self.current_dish_ingredients):

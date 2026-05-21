@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Ingredient" ADD COLUMN     "Ing_price" DOUBLE PRECISION NOT NULL DEFAULT 0.50;
