@@ -403,7 +403,7 @@ class RestaurantModel:
             meta_str = self.dish_ingredients_matrix[dish][ing_name]
             val_str, symbol = meta_str.split()
             
-            # Не дозволяємо опустити базову кількість нижче 0
+            # Не дозволяю опустити базову кількість нижче 0
             new_val = max(0, int(val_str) + amount)
             new_meta = f"{new_val} {symbol}"
             
