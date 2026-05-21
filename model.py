@@ -592,7 +592,7 @@ class RestaurantModel:
             name = ing["name"]
             count = ing["count"]
             
-            # 1. Якщо це "рідний" інгредієнт рецепту
+            # 1. Якщо це рідний інгредієнт рецепту
             if name in price_rules:
                 price = price_rules[name]
                 
