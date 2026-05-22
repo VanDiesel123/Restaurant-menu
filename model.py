@@ -10,25 +10,25 @@ class RestaurantModel:
         self.db = Prisma()
         # Тимчасові змінні стану для збереження зв'язку з контролером
         self.current_table_num = 7       # Поточний обраний стіл у CREATE та EDIT (int)
-        self.selected_category = "Страви" # Поточна категорія меню (str)
-        self.selected_dish = None         # Назва поточної обраної страви (str або None)
+        self.selected_category = "Страви" # Поточна категорія меню
+        self.selected_dish = None         # Назва поточної обраної страви
         
         # Робочі буфери оперативної пам'яті контролера (не потребують збереження в таблиці БД)
         self.current_dish_ingredients = [] # Список словників поточних кастомних інгредієнтів страви
         self.basket_dishes = []            # Тимчасовий кошик поточного незавершеного замовлення
 
         # --- СТРУКТУРИ ДАНИХ (БЕКЕНД-РОЗРОБНИК МАЄ ПЕРЕНЕСТИ ЦЕ В ТАБЛИЦІ БД) ---
-        # 1. Таблиця Orders / OrderItems: { order_id (int): {"table": int, "dishes": [list of snapshots]} }
+        # Таблиця Orders / OrderItems: { order_id (int): {"table": int, "dishes": [list of snapshots]} }
         self.my_orders_database = {} 
         self.next_order_id = 1 # Лічильник автоінкременту для ID нових чеків (Primary Key)
         
-        # 2. Таблиця Menu / Categories: Динамічна структура меню ресторану та базових цін
+        # Таблиця Menu / Categories: Динамічна структура меню ресторану та базових цін
         self.menu_data = {
             "Страви": {},
             "Напої": {},
         }
 
-        # 3. Таблиця DishConfigurations: Зберігає тривалість приготування страв 
+        # Таблиця DishConfigurations: Зберігає тривалість приготування страв 
         self.dish_cooking_time = {
             "Борщ український": 25, "Плов з телятиною": 35, "Салат Цезар": 15,
             "Стейк Рибай": 20, "Суп томатний": 15, "Деруни зі сметаною": 20,
@@ -36,7 +36,7 @@ class RestaurantModel:
             "Котлета по-київськи": 20
         }
         
-        # 4. Таблиця DishDescriptions: Текстові рядки описів страв для середньої колонки
+        # Таблиця DishDescriptions: Текстові рядки описів страв для середньої колонки
         self.descriptions = {
             "Борщ український": [
                 "Традиційний український борщ на м'ясному бульйоні.",
@@ -86,7 +86,7 @@ class RestaurantModel:
             ]
         }
         
-        # 5. Таблиця Recipes: Технологічні карти страв { dish_name (str): { ing_name (str): "вартість_маркер" } }
+        # Таблиця Recipes: Технологічні карти страв { dish_name (str): { ing_name (str): "вартість_маркер" } }
         self.dish_ingredients_matrix = {
             "Борщ український": {
                 "Яловичина (г)": "100 $", "Буряк (г)": "80 &", "Капуста (г)": "50 *",
@@ -134,13 +134,13 @@ class RestaurantModel:
             }
         }
 
-        # 6. Таблиця IngredientPrices: Матриця вартості грама/одиниці продукту для кожної страви
+        # Таблиця IngredientPrices: Матриця вартості грама/одиниці продукту для кожної страви
         self.dish_ingredients_price_matrix = {}
         
-        # 7. Таблиця IngredientsPool: Загальний глобальний перелік усіх можливих складників (list of str)
+        # Таблиця IngredientsPool: Загальний глобальний перелік усіх можливих складників (list of str)
         self.global_ingredients_pool = []
 
-        # 8. Нова колонка/таблиця глобальних цін інгредієнтів (перенесено з Prisma)
+        # Нова колонка/таблиця глобальних цін інгредієнтів перенесено з Prisma
         self.global_ingredients_prices = {
             "Яловичина (г)": 0.60,
             "Буряк (г)": 0.10,
@@ -285,7 +285,7 @@ class RestaurantModel:
         if not new_name or old_name == new_name:
             return
             
-        # 1. Переносю дані в нові ключі у словниках оперативної пам'яті
+        #  Переносю дані в нові ключі у словниках оперативної пам'яті
         for category in self.menu_data:
             if old_name in self.menu_data[category]:
                 # Бераю всі дані зі старої назви і кладемо в нову, а стару стираємо
@@ -303,7 +303,7 @@ class RestaurantModel:
         if getattr(self, 'selected_dish', None) == old_name:
             self.selected_dish = new_name
             
-        # 2. Оновлюю дані назавжди в PostgreSQL
+        # Оновлюю дані назавжди в PostgreSQL
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self._async_rename_dish(old_name, new_name))
 
@@ -344,7 +344,7 @@ class RestaurantModel:
     def delete_ingredient_type_completely(self, ing_name):
         """Повне видалення інгредієнта з пулу, всіх рецептів та бази даних"""
         if ing_name in self.global_ingredients_pool:
-            # 1. Видаляю з оперативної пам'яті
+            #  Видаляю з оперативної пам'яті
             self.global_ingredients_pool.remove(ing_name)
             if ing_name in self.global_ingredients_prices:
                 del self.global_ingredients_prices[ing_name]
@@ -354,7 +354,7 @@ class RestaurantModel:
                 if ing_name in self.dish_ingredients_matrix[dish]:
                     del self.dish_ingredients_matrix[dish][ing_name]
 
-            # 2. Видаляю з бази даних PostgreSQL
+            # Видаляю з бази даних PostgreSQL
             loop = asyncio.get_event_loop()
             loop.run_until_complete(self._async_delete_ingredient(ing_name))
 
@@ -373,10 +373,10 @@ class RestaurantModel:
             old_price = self.menu_data[category][dish]
             new_price = max(5.0, old_price + amount)  # Не даю ціні впасти нижче 5 грн
             
-            # 1. Оновлюю ціну в оперативній пам'яті
+            # Оновлюю ціну в оперативній пам'яті
             self.menu_data[category][dish] = float(new_price)
             
-            # 2. Відправляю нову ціну в PostgreSQL
+            # Відправляю нову ціну в PostgreSQL
             loop = asyncio.get_event_loop()
             loop.run_until_complete(self._async_update_dish_price(dish, new_price))
 
@@ -402,7 +402,7 @@ class RestaurantModel:
     def delete_dish_from_menu_completely(self, dish):
         """Повне видалення страви з меню, її рецептів та бази даних"""
         
-        # 1. Автоматично шукаю страву в категоріях і видаляю з пам'яті
+        # Автоматично шукаю страву в категоріях і видаляю з пам'яті
         for category in self.menu_data:
             if dish in self.menu_data[category]:
                 del self.menu_data[category][dish]
@@ -415,7 +415,7 @@ class RestaurantModel:
         
         self.dish_ingredients_matrix[dish] = {}
 
-        # 2. Видаляю з бази даних PostgreSQL
+        # Видаляю з бази даних PostgreSQL
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self._async_delete_dish(dish))
 
@@ -499,11 +499,11 @@ class RestaurantModel:
         if not name.strip() or name in self.global_ingredients_pool:
             return
             
-        # 1. Записую в оперативну пам'ять
+        # Записую в оперативну пам'ять
         self.global_ingredients_pool.append(name)
         self.global_ingredients_prices[name] = 0.50 # Дефолтна ціна 0.50 грн за одиницю
         
-        # 2. Зберігаю інгредієнт у базу даних PostgreSQL
+        # Зберігаю інгредієнт у базу даних PostgreSQL
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self._async_add_ingredient_to_db(name))
 
@@ -523,13 +523,13 @@ class RestaurantModel:
         if not name.strip() or name in self.menu_data["Страви"]:
             return
             
-        # 1. Записую в оперативну пам'ять (щоб візуал оновився миттєво)
+        # Записую в оперативну пам'ять (щоб візуал оновився миттєво)
         self.menu_data["Страви"][name] = 100.0  # Дефолтна ціна (100 грн)
         self.dish_cooking_time[name] = 20       # Дефолтний час приготування
         self.descriptions[name] = ["Кастомна страва від Адміністратора."]
         self.dish_ingredients_matrix[name] = {}
         
-        # 2. Зберігаю нову страву в базу даних PostgreSQL
+        # Зберігаю нову страву в базу даних PostgreSQL
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self._async_add_dish_to_db(name))
 
@@ -630,16 +630,16 @@ class RestaurantModel:
             name = ing["name"]
             count = ing["count"]
             
-            # 1. Якщо це рідний інгредієнт рецепту
+            # Якщо це рідний інгредієнт рецепту
             if name in price_rules:
                 price = price_rules[name]
                 
-            # 2. Якщо це "чужий" інгредієнт (доданий з правої панелі)
+            # Якщо це "чужий" інгредієнт (доданий з правої панелі)
             # Беремо його РЕАЛЬНУ ціну з бази даних
             elif hasattr(self, 'global_ingredients_prices') and name in self.global_ingredients_prices:
                 price = self.global_ingredients_prices[name]
                 
-            # 3. Підстраховка на випадок збою
+            # Підстраховка на випадок збою
             else:
                 price = 0.50
                 
@@ -696,10 +696,10 @@ class RestaurantModel:
         if order_id in self.my_orders_database:
             order_data = self.my_orders_database[order_id]
             
-            # 1. Відновлюю номер столика
+            # Відновлюю номер столика
             self.current_table_num = order_data["table"]
             
-            # 2. Перекидаю страви з чека у тимчасовий кошик контролера
+            # Перекидаю страви з чека у тимчасовий кошик контролера
             import copy
             self.basket_dishes = copy.deepcopy(order_data["dishes"])
             
@@ -751,14 +751,14 @@ class RestaurantModel:
 
     async def confirm_and_close_order(self):
 
-        # 1. Перевіряємо, чи не порожній кошик. Якщо порожній - нічого зберігати.
+        # Перевіряємо, чи не порожній кошик. Якщо порожній - нічого зберігати.
         if not self.basket_dishes:
             return False
 
-        # 2. Рахуємо загальну суму чека (викликаємо нашу синхронну функцію)
+        # Рахуємо загальну суму чека (викликаємо нашу синхронну функцію)
         total_price = self.get_total_order_price()
 
-        # 3. Створюємо новий запис у таблиці Order (Замовлення)
+        # Створюємо новий запис у таблиці Order (Замовлення)
         # Prisma автоматично генерує унікальний ID для цього чека
         new_order = await self.db.order.create(
             data={
@@ -768,7 +768,7 @@ class RestaurantModel:
             }
         )
 
-        # 4. Перебираємо всі страви з кошика і прив'язуємо їх до цього чека
+        # Перебираємо всі страви з кошика і прив'язуємо їх до цього чека
         for item in self.basket_dishes:
             dish_name = item["DISH_NAME"]
             
@@ -787,7 +787,7 @@ class RestaurantModel:
                     }
                 )
 
-        # 5. Очищаємо кошик і скидаємо столик для наступного клієнта
+        # Очищаємо кошик і скидаємо столик для наступного клієнта
         self.basket_dishes = []
         self.current_table_num = 7
         
